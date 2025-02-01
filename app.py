@@ -65,6 +65,22 @@ def get_gift_ideas(occasion, budget, recipient):
 st.title("🎁 Last-Minute Gift AI")
 st.write("Enter details below and get instant gift ideas with Amazon affiliate links!")
 
+# Friendly Amazon Affiliate Disclosure
+st.markdown(
+    """
+    👋 **Hey there!**  
+
+    This app is completely free to use, and to keep building cool tools like this, we’ve joined the **Amazon Associates program**.  
+    That means if you buy something through the links, **we may earn a small commission at no extra cost to you**.  
+
+    🛍️ **Important:** This **does NOT** affect what products you see!  
+    Our AI simply finds great gift ideas, and we provide easy Amazon links for your convenience.  
+
+    🎉 **Hope you like it! More fun apps coming soon!** 🚀  
+    """,
+    unsafe_allow_html=True
+)
+
 # User inputs
 occasion = st.selectbox("Select an Occasion", ["Birthday", "Anniversary", "Christmas", "Graduation", "Valentine's Day"])
 budget = st.selectbox("Select Budget", ["Under $50", "$50-$100", "$100-$200", "$200+"])
