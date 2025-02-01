@@ -9,7 +9,7 @@ load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 # Your Amazon Affiliate Store ID (Replace with yours)
-AMAZON_AFFILIATE_TAG = "yourstoreid-20"  # Change this to your actual Store ID
+AMAZON_AFFILIATE_TAG = "blumby20-20"  # Change this to your actual Store ID
 
 # Function to format search queries & fetch Amazon links
 def generate_amazon_search_link(product_name):
