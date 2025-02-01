@@ -8,10 +8,13 @@ from dotenv import load_dotenv
 load_dotenv()
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
+# Your Amazon Affiliate Store ID (Replace with yours)
+AMAZON_AFFILIATE_TAG = "yourstoreid-20"  # Change this to your actual Store ID
+
 # Function to format search queries & fetch Amazon links
 def generate_amazon_search_link(product_name):
     query = product_name.replace(" ", "+")  # Format search query
-    return f"https://www.amazon.com/s?k={query}"  # Clean Amazon search link
+    return f"https://www.amazon.com/s?k={query}&tag={AMAZON_AFFILIATE_TAG}"  # Amazon affiliate link
 
 # Function to clean AI output and extract only gift names
 def clean_gift_idea(raw_text):
@@ -27,7 +30,7 @@ def clean_gift_idea(raw_text):
 
     return cleaned_text
 
-# Function to generate gift ideas with clean Amazon search links
+# Function to generate gift ideas with clean Amazon affiliate links
 def get_gift_ideas(occasion, budget, recipient):
     if not openai.api_key:
         return "❌ OpenAI API key is missing. Please check your .env file."
@@ -60,7 +63,7 @@ def get_gift_ideas(occasion, budget, recipient):
 
 # Streamlit UI
 st.title("🎁 Last-Minute Gift AI")
-st.write("Enter details below and get instant gift ideas with Amazon search links!")
+st.write("Enter details below and get instant gift ideas with Amazon affiliate links!")
 
 # User inputs
 occasion = st.selectbox("Select an Occasion", ["Birthday", "Anniversary", "Christmas", "Graduation", "Valentine's Day"])
