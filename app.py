@@ -2,95 +2,298 @@ import streamlit as st
 import openai
 import os
 import re
+import time
 from dotenv import load_dotenv
 
 # Load API key from .env file
 load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+openai_client = openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Your Amazon Affiliate Store ID (Replace with yours)
-AMAZON_AFFILIATE_TAG = "blumby20-20"  # Change this to your actual Store ID
+# =========================
+#   AMAZON LINK GENERATION
+# =========================
+AMAZON_AFFILIATE_TAG = "blumby20-20"
 
-# Function to format search queries & fetch Amazon links
 def generate_amazon_search_link(product_name):
-    query = product_name.replace(" ", "+")  # Format search query
-    return f"https://www.amazon.com/s?k={query}&tag={AMAZON_AFFILIATE_TAG}"  # Amazon affiliate link
+    """Generate a basic Amazon search URL from the gift name, with affiliate tag."""
+    query = re.sub(r'[^a-zA-Z0-9 ]', '', product_name).replace(" ", "+")
+    return f"https://www.amazon.com/s?k={query}&tag={AMAZON_AFFILIATE_TAG}"
 
-# Function to clean AI output and extract only gift names
-def clean_gift_idea(raw_text):
+# =========================
+#       GPT-4 PROMPTS
+# =========================
+
+def get_gift_recommendations(occasion, budget, recipient):
     """
-    Cleans the AI-generated text to extract only the product name,
-    removing descriptions and extra words.
+    Always treat the user as ADVANCED in their interests.
+    - Avoid generic or beginner gear.
+    - Focus on pro-level, premium, or specialized items (4+ star reviews).
+    - Provide exactly 3 unique items.
+    Budget is just a guideline (Low < $50, Medium $50-$200, Big Spender > $200).
+    We'll generate the final Amazon links ourselves.
     """
-    # Remove budget-related text (e.g., "all under $50 and easily orderable online")
-    raw_text = re.sub(r'all under\s?\$?\d+\s?(and easily orderable online)?', '', raw_text, flags=re.IGNORECASE)
-    
-    # Extract just the product name by removing everything after ":" or "-"
-    cleaned_text = re.split(r":|-", raw_text)[0].strip()
 
-    return cleaned_text
+    prompt = f"""
+You are an expert gift advisor. The user is advanced in their interests.
+Recipient: {recipient}
+Occasion: {occasion}
+Budget: {budget} (Low < $50, Medium $50-$200, Big Spender > $200)
 
-# Function to generate gift ideas with clean Amazon affiliate links
-def get_gift_ideas(occasion, budget, recipient):
-    if not openai.api_key:
-        return "❌ OpenAI API key is missing. Please check your .env file."
+Return exactly 3 unique, advanced-level, and high-review (4+ stars) Amazon items 
+that match the recipient's interests (no beginner or generic gear).
 
-    prompt = f"Suggest three last-minute gift ideas for a {occasion} within a {budget} budget. The recipient is {recipient}. Keep them practical and easy to order online. Only provide the product names, no descriptions."
+Format:
+Gift Name: [Product name here]
+(Exactly 3 items, no disclaimers.)
+"""
 
-    try:
-        response = openai.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are an AI that suggests creative last-minute gifts."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        
-        # Convert AI response into a clean list
-        gift_ideas = response.choices[0].message.content.split("\n")  
-        formatted_suggestions = []
+    response = openai_client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.7
+    )
 
-        for idea in gift_ideas:
-            if idea.strip():  # Ignore empty lines
-                product_name = clean_gift_idea(idea.strip("🎁-"))  # Clean up AI response
-                amazon_url = generate_amazon_search_link(product_name)
-                formatted_suggestions.append(f"🎁 **{product_name}**\n🔗 [Find on Amazon]({amazon_url})\n")
+    gift_ideas = []
+    for line in response.choices[0].message.content.split("\n"):
+        if line.startswith("Gift Name:"):
+            gift_name = line.replace("Gift Name:", "").strip()
+            gift_ideas.append((gift_name, generate_amazon_search_link(gift_name)))
 
-        return "\n".join(formatted_suggestions)  # Return formatted gift list
-    
-    except Exception as e:
-        return f"❌ Error: {e}"
+    return gift_ideas[:3]
 
-# Streamlit UI
-st.title("🎁 Last-Minute Gift AI")
-st.write("Enter details below and get instant gift ideas with Amazon affiliate links!")
-
-# Friendly Amazon Affiliate Disclosure
-st.markdown(
+def get_experiences(occasion, budget, recipient):
     """
-    👋 **Hey there!**  
+    Always treat the user as advanced. Suggest exactly 2 experiences.
+    Must use only domain-level homepage links (no deeper paths).
+    Format:
+      Experience Suggestion: <short statement>
+      Website: <domain homepage only>
+    """
 
-    This app is completely free to use, and to keep building cool tools like this, we’ve joined the **Amazon Associates program**.  
-    That means if you buy something through the links, **we may earn a small commission at no extra cost to you**.  
+    prompt = f"""
+You are an expert experience curator. The user is advanced in their interests.
+Recipient: {recipient}
+Occasion: {occasion}
+Budget: {budget}
 
-    🛍️ **Important:** This **does NOT** affect what products you see!  
-    Our AI simply finds great gift ideas, and we provide easy Amazon links for your convenience.  
+Return exactly 2 unique experiences, advanced-level or specialized.
+Use only domain-level homepage links.
+(no disclaimers, exactly 2 experiences)
 
-    🎉 **Hope you like it! More fun apps coming soon!** 🚀  
-    """,
-    unsafe_allow_html=True
+Format:
+Experience Suggestion: [one line describing the idea]
+Website: [domain homepage link only]
+"""
+
+    response = openai_client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.7
+    )
+
+    experiences = []
+    suggestion, site = None, None
+
+    lines = response.choices[0].message.content.split("\n")
+    for line in lines:
+        if line.startswith("Experience Suggestion:"):
+            suggestion = line.replace("Experience Suggestion:", "").strip()
+        elif line.startswith("Website:"):
+            candidate_link = line.replace("Website:", "").strip()
+            # If GPT tries "https://www.site.com/page", capture only "https://www.site.com"
+            match = re.search(r"(https?://[^/]+)", candidate_link)
+            site = match.group(1) if match else candidate_link
+
+        if suggestion and site:
+            experiences.append((suggestion, site))
+            suggestion, site = None, None
+
+    return experiences[:2]
+
+# =========================
+#         UI
+# =========================
+
+st.set_page_config(
+    page_title="Impulse: Find the Perfect Gift",
+    page_icon="🎁",
+    layout="wide"
 )
 
-# User inputs
-occasion = st.selectbox("Select an Occasion", ["Birthday", "Anniversary", "Christmas", "Graduation", "Valentine's Day"])
-budget = st.selectbox("Select Budget", ["Under $50", "$50-$100", "$100-$200", "$200+"])
-recipient = st.text_input("Describe the recipient (e.g., 'Dad who loves golf')")
+# NEW Dark Mode CSS
+custom_css = """
+<style>
+/* Google Font */
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
 
-# Generate gift ideas on button click
-if st.button("Get Gift Ideas"):
-    if recipient:
-        gift_ideas = get_gift_ideas(occasion, budget, recipient)
-        st.subheader("🎁 Gift Suggestions:")
-        st.markdown(gift_ideas, unsafe_allow_html=True)
+/* Global Styles - Dark Mode */
+body {
+    font-family: 'Poppins', sans-serif;
+    background-color: #1B1B1B;
+    color: #F2F2F2; /* Light text against dark background */
+}
+
+/* Hero Section */
+.hero-section {
+    background: linear-gradient(135deg, #E74C3C, #F39C12);
+    padding: 40px 20px;
+    border-radius: 12px;
+    text-align: center;
+    color: #FFF;
+}
+.hero-section h1 {
+    font-size: 3em;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+.hero-section p {
+    font-size: 1.2em;
+    opacity: 0.9;
+}
+
+/* Affiliate Disclosure */
+.affiliate-disclosure {
+    font-size: 0.9em;
+    color: #BBBBBB;
+    text-align: center;
+    margin-top: 10px;
+}
+
+/* Inputs & Dropdowns */
+.stTextInput, .stSelectbox {
+    font-size: 1.1em;
+    padding: 12px;
+    border-radius: 10px;
+    border: 1px solid #555555;
+    background: #2A2A2A;
+    color: #F2F2F2;
+    transition: 0.2s ease-in-out;
+}
+.stTextInput:hover, .stSelectbox:hover {
+    border-color: #E74C3C;
+    transform: scale(1.02);
+}
+
+/* Button */
+.stButton>button {
+    background-color: #E74C3C !important;
+    color: #FFF !important;
+    font-weight: bold;
+    border-radius: 10px;
+    padding: 12px 24px;
+    font-size: 1.2em;
+    border: none;
+    transition: all 0.3s ease-in-out;
+}
+.stButton>button:hover {
+    background-color: #C0392B !important;
+    transform: scale(1.05);
+}
+
+/* Result Cards */
+.result-card {
+    background: #2A2A2A;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0px 4px 12px rgba(255, 255, 255, 0.05);
+    transition: transform 0.2s ease-in-out;
+    display: block;
+    margin-bottom: 15px;
+}
+.result-card:hover {
+    transform: scale(1.02);
+}
+.result-card a {
+    color: #F39C12;
+    text-decoration: none;
+    font-weight: 500;
+}
+.result-card a:hover {
+    text-decoration: underline;
+}
+
+/* Streamlit Component Tweaks */
+.reportview-container .main .block-container {
+    color: #F2F2F2;
+}
+</style>
+"""
+st.markdown(custom_css, unsafe_allow_html=True)
+
+# Hero Section
+st.markdown("""
+<div class="hero-section">
+    <h1>🎁 Impulse: Find the Perfect Gift in Seconds</h1>
+    <p>AI-powered recommendations tailored to your needs – quick and easy!</p>
+</div>
+""", unsafe_allow_html=True)
+
+# Affiliate Disclosure
+st.markdown("""
+<div class="affiliate-disclosure">
+    <p><strong>Disclosure:</strong> As an Amazon Associate, we earn from qualifying purchases.
+    This means we may receive a commission when you click our links and make a purchase.
+    Thank you for supporting Impulse!</p>
+</div>
+""", unsafe_allow_html=True)
+
+# --- User Inputs ---
+st.subheader("🎯 Find the Perfect Gift in Seconds")
+
+with st.container():
+    col1, col2, col3 = st.columns([2, 2, 3])
+    
+    with col1:
+        occasion = st.selectbox(
+            "🎉 Select an Occasion", 
+            ["Birthday", "Anniversary", "Holiday", "Wedding", "New Baby"]
+        )
+    
+    with col2:
+        budget = st.selectbox(
+            "💰 Select Budget", 
+            ["Low", "Medium", "Big Spender"]
+        )
+    
+    with col3:
+        recipient = st.text_input("👤 Describe the Recipient", 
+            placeholder="e.g., 'My friend who is a passionate photographer'"
+        )
+
+# --- Generate Gift Ideas ---
+if st.button("🔍 Find My Gift!"):
+    if recipient.strip():
+        with st.spinner("🎁 Finding the perfect gift..."):
+            time.sleep(2)
+
+            # 1) Amazon Gifts
+            gift_ideas = get_gift_recommendations(occasion, budget, recipient)
+
+            # 2) Experiences
+            experiences = get_experiences(occasion, budget, recipient)
+
+            st.subheader("✨ AI-Generated Gift Suggestions (Amazon):")
+            if not gift_ideas:
+                st.info("No items returned. Try adjusting your query.")
+            else:
+                for idea, link in gift_ideas:
+                    st.markdown(f"""
+                        <div class="result-card">
+                            <strong>🎁 {idea}</strong><br>
+                            <a href="{link}" target="_blank">🔗 Find on Amazon</a>
+                        </div>
+                    """, unsafe_allow_html=True)
+            
+            st.subheader("🌟 Unique Experiences (Online or In-Person)")
+            if not experiences:
+                st.info("No experiences returned. Try adjusting your query.")
+            else:
+                for suggestion, site in experiences:
+                    st.markdown(f"""
+                        <div class="result-card">
+                            <strong>{suggestion}</strong><br>
+                            <a href="{site}" target="_blank">🔗 Visit Website</a>
+                        </div>
+                    """, unsafe_allow_html=True)
     else:
         st.warning("⚠️ Please enter a recipient description.")
