@@ -209,7 +209,7 @@ st.markdown("""
 <div class="hero-section">
     <h1>Gift Finder AI</h1>
     <em>Thanks for testing this out </em>
-    <p>Hint: Make sure to details for the gift recipient. For ex. My Dad < My Dad who loves golf </p>
+    <p>Hint: Make sure to add details for the gift recipient. For ex. My Dad < My Dad who loves golf </p>
 </div>
 """, unsafe_allow_html=True)
 
