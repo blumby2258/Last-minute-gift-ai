@@ -20,89 +20,6 @@ def generate_amazon_search_link(product_name):
     return f"https://www.amazon.com/s?k={query}&tag={AMAZON_AFFILIATE_TAG}"
 
 # =========================
-#       GPT-4 PROMPTS
-# =========================
-
-def get_gift_recommendations(occasion, budget, recipient):
-    """
-    - Assumes the user is ADVANCED in their interests.
-    - Avoids generic or beginner-level gear.
-    - Focuses on pro-level, premium, or specialized items (4+ star reviews).
-    - Provides exactly 3 unique items.
-    - Budget is a guideline (Low < $50, Medium $50-$200, Big Spender > $200).
-    """
-
-    prompt = f"""
-You are an expert gift advisor. The user is advanced in their interests.
-Recipient: {recipient}
-Occasion: {occasion}
-Budget: {budget} (Low < $50, Medium $50-$200, Big Spender > $200)
-
-Return exactly 3 unique, high-quality, and high-review (4+ stars) Amazon items 
-that match the recipient's interests (no beginner or generic gear).
-
-Format:
-Gift Name: [Product name here]
-"""
-
-    response = openai_client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7
-    )
-
-    gift_ideas = []
-    for line in response.choices[0].message.content.split("\n"):
-        if line.startswith("Gift Name:"):
-            gift_name = line.replace("Gift Name:", "").strip()
-            gift_ideas.append((gift_name, generate_amazon_search_link(gift_name)))
-
-    return gift_ideas[:3]
-
-def get_experiences(occasion, budget, recipient):
-    """
-    - Assumes the user is advanced in their interests.
-    - Suggests exactly 2 experiences with only domain-level homepage links.
-    """
-
-    prompt = f"""
-You are an expert experience curator. The user is advanced in their interests.
-Recipient: {recipient}
-Occasion: {occasion}
-Budget: {budget}
-
-Return exactly 2 unique experiences, advanced-level or specialized.
-Use only domain-level homepage links (e.g., 'Website: https://www.stubhub.com').
-
-Format:
-Experience Suggestion: [one line describing the idea]
-Website: [domain homepage link only]
-"""
-
-    response = openai_client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.7
-    )
-
-    experiences = []
-    suggestion, site = None, None
-
-    lines = response.choices[0].message.content.split("\n")
-    for line in lines:
-        if line.startswith("Experience Suggestion:"):
-            suggestion = line.replace("Experience Suggestion:", "").strip()
-        elif line.startswith("Website:"):
-            match = re.search(r"(https?://[^/]+)", line.replace("Website:", "").strip())
-            site = match.group(1) if match else None
-
-        if suggestion and site:
-            experiences.append((suggestion, site))
-            suggestion, site = None, None
-
-    return experiences[:2]
-
-# =========================
 #         UI
 # =========================
 
@@ -151,36 +68,49 @@ body {
     opacity: 0.7;
 }
 
-/* Inputs & Dropdowns */
+/* Input Field Styling */
 .stTextInput, .stSelectbox {
-    background: #222222;
-    color: white;
+    background: #000000;  /* White background */
+    color: #000000;  /* Black text */
     border-radius: 8px;
-    padding: 10px;
+    padding: 12px;
     font-size: 1.1em;
+    border: 1px solid #ffcc00;
+}
+.stTextInput::placeholder, .stSelectbox::placeholder {
+    color: #777777;
 }
 .stTextInput:hover, .stSelectbox:hover {
-    border-color: #ffffff;
+    border-color:#000000;
+    box-shadow: 0px 0px 8px rgba(255, 255, 255, 0.2);
 }
 
-/* Button */
+/* Labels for Inputs */
+div[data-baseweb="select"] label, .stTextInput label {
+    color: #ffffff !important;  /* black label text */
+}
+
+/* Primary Button */
 .stButton>button {
-    background-color: white !important;
-    color: black !important;
+    background-color: #ffcc00 !important;
+    color: #000000 !important;
     font-weight: bold;
-    border-radius: 10px;
-    padding: 12px 24px;
+    border-radius: 12px;
+    padding: 14px 30px;
     font-size: 1.2em;
+    border: none;
     transition: all 0.3s ease-in-out;
+    box-shadow: 0px 4px 10px rgba(255, 255, 255, 0.2);
 }
 .stButton>button:hover {
     background-color: #dddddd !important;
+    transform: scale(1.05);
 }
 
 /* Result Cards */
 .result-card {
     background: rgba(255, 255, 255, 0.1);
-    padding: 15px;
+    padding: 18px;
     border-radius: 10px;
     text-align: center;
     box-shadow: 0px 4px 12px rgba(255, 255, 255, 0.1);
@@ -191,6 +121,19 @@ body {
     text-decoration: none;
     font-weight: 500;
 }
+.result-card a:hover {
+    text-decoration: underline;
+}
+
+/* Affiliate Disclosure */
+.affiliate-disclosure {
+    font-size: 0.9em;
+    color: #bbbbbb;
+    text-align: center;
+    margin-top: 30px;
+    padding: 10px;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
 </style>
 """
 st.markdown(custom_css, unsafe_allow_html=True)
@@ -198,8 +141,8 @@ st.markdown(custom_css, unsafe_allow_html=True)
 # Hero Section
 st.markdown("""
 <div class="hero-section">
-    <h1>Find the perfect gift</h1>
-    <em>In seconds.</em>
+    <h1>The Gift Finder</h1>
+    <em></em>
     <p>Your personalized AI Gift Agent</p>
 </div>
 """, unsafe_allow_html=True)
@@ -225,15 +168,41 @@ if st.button("🔍 Find My Gift!"):
         with st.spinner("🎁 Finding the perfect gift..."):
             time.sleep(2)
 
-            gift_ideas = get_gift_recommendations(occasion, budget, recipient)
-            experiences = get_experiences(occasion, budget, recipient)
-
+            # Placeholder for results
             st.subheader("✨ AI-Generated Gift Suggestions (Amazon):")
-            for idea, link in gift_ideas:
-                st.markdown(f"<div class='result-card'><strong>🎁 {idea}</strong><br><a href='{link}'>🔗 Find on Amazon</a></div>", unsafe_allow_html=True)
-
-            st.subheader("🌟 Unique Experiences")
-            for suggestion, site in experiences:
-                st.markdown(f"<div class='result-card'><strong>{suggestion}</strong><br><a href='{site}'>🔗 Visit Website</a></div>", unsafe_allow_html=True)
+            st.markdown("""
+                <div class="result-card">
+                    <strong>🎁 Example Gift 1</strong><br>
+                    <a href="#">🔗 Find on Amazon</a>
+                </div>
+                <div class="result-card">
+                    <strong>🎁 Example Gift 2</strong><br>
+                    <a href="#">🔗 Find on Amazon</a>
+                </div>
+                <div class="result-card">
+                    <strong>🎁 Example Gift 3</strong><br>
+                    <a href="#">🔗 Find on Amazon</a>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            st.subheader("🌟 Unique Experiences (Online or In-Person)")
+            st.markdown("""
+                <div class="result-card">
+                    <strong>Experience 1</strong><br>
+                    <a href="#">🔗 Visit Website</a>
+                </div>
+                <div class="result-card">
+                    <strong>Experience 2</strong><br>
+                    <a href="#">🔗 Visit Website</a>
+                </div>
+            """, unsafe_allow_html=True)
     else:
         st.warning("⚠️ Please enter a recipient description.")
+
+# Amazon Affiliate Disclosure
+st.markdown("""
+<div class="affiliate-disclosure">
+    <p><strong>Disclosure:</strong> As an Amazon Associate, we earn from qualifying purchases. Clicking our links 
+    may result in a commission, helping us continue providing this service. Thank you!</p>
+</div>
+""", unsafe_allow_html=True)
