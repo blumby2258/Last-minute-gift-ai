@@ -208,13 +208,13 @@ st.markdown(custom_css, unsafe_allow_html=True)
 st.markdown("""
 <div class="hero-section">
     <h1>Gift Finder AI</h1>
-    <em></em>
-    <p></p>
+    <em>Thanks for testing this out </em>
+    <p>Hint: Make sure to details for the gift recipient. For ex. My Dad < My Dad who loves golf </p>
 </div>
 """, unsafe_allow_html=True)
 
 # User Inputs
-st.subheader("🎯 Find the Perfect Gift in Seconds")
+st.subheader("")
 
 with st.container():
     col1, col2, col3 = st.columns([2, 2, 3])
